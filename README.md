@@ -22,25 +22,4 @@ RERANK_URL=https://api.cohere.ai/v1/rerank
 RERANK_KEY=TU_API_KEY
 RERANK_MODEL=rerank-multilingual-v3.0
 
-Endpoints
-
-GET / (UI)
-
-GET /api/ping (health simple)
-
-GET /api/ia-test (diagnóstico IA)
-
-POST /api/search (búsqueda)
-
-Body: query (req), categoria?, barrio?, k?, user_lat?, user_lon?, use_ia?
-
-Lógica
-
-Candidatos: FULLTEXT (fallback LIKE) + relajación de filtros.
-
-IA Rerank sobre top-k.
-
-Score final: 0.70*IA + 0.20*prox + 0.10*rating.
-
-Uso académico.
-
+- Demo estática del entregable 3: http://127.0.0.1:8001/demo.html
