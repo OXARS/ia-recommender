@@ -6,7 +6,7 @@ Aplicación web en **Laravel + MySQL**. Recupera candidatos con **FULLTEXT/LIKE*
 ---
 
 ## 🎬 Video (entregable 2)
-Agrega el enlace cuando esté listo:
+[Agrega el enlace cuando esté listo:](https://ister-my.sharepoint.com/:v:/g/personal/oscar_caisatoa_ister_edu_ec/EXJm9d9qpuZFiJ2WG0TVNZoBY3KhZH6Hgut06RoD1mna3w?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=CrsDdk)
 
 ## Documentación
 - 📘 [Manual de Usuario](MANUAL_USUARIO.md)
