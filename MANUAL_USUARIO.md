@@ -71,7 +71,3 @@ El orden final considera:
 - La ubicación solo se usa para calcular cercanía **durante tu búsqueda**.  
 - No se solicita ni almacena información personal.
 
----
-
-## 9) Ayuda
-Si notas datos incorrectos o errores, envía captura de pantalla y la frase que buscaste al responsable técnico.

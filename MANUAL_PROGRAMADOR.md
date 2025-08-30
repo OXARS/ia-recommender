@@ -1,124 +1,170 @@
 # Manual del Programador — Buscador de Servicios con IA
 
-> **Stack:** Laravel 12 · PHP 8.2+ · MySQL 8 · Re-ranking IA (Cohere/Jina)
+![Laravel](https://img.shields.io/badge/Laravel-12-red)
+![PHP](https://img.shields.io/badge/PHP-%E2%89%A58.2-777bb4)
+![MySQL](https://img.shields.io/badge/MySQL-8-blue)
+![IA](https://img.shields.io/badge/Re--ranking-Cohere%20%2F%20Jina-8A2BE2)
+![Estado](https://img.shields.io/badge/Status-Activo-brightgreen)
+
+> Plataforma de búsqueda en **Laravel + MySQL** que recupera candidatos con **FULLTEXT/LIKE** y re–ranquea con **IA**.  
+> **Score final** = `0.70 × IA + 0.20 × proximidad + 0.10 × rating`.
+
+---
+
+## Índice
+
+1. [Descripción técnica](#1-descripción-técnica)  
+2. [Requisitos y entorno](#2-requisitos-y-entorno)  
+3. [Instalación](#3-instalación)  
+4. [Variables .env](#4-variables-env)  
+5. [Estructura del proyecto](#5-estructura-del-proyecto)  
+6. [Esquema de Base de Datos](#6-esquema-de-base-de-datos)  
+7. [Índices recomendados](#7-índices-recomendados)  
+8. [API Contract](#8-api-contract)  
+9. [Lógica y scoring](#9-lógica-y-scoring)  
+10. [Seguridad y buenas prácticas](#10-seguridad-y-buenas-prácticas)  
+11. [Mantenimiento y pruebas](#11-mantenimiento-y-pruebas)  
+12. [Checklist de entrega (QA)](#12-checklist-de-entrega-qa)
 
 ---
 
 ## 1) Descripción técnica
-Aplicación **Laravel 12 + MySQL 8**.
 
-**Flujo:**
-1. **Recuperación de candidatos:** consulta **FULLTEXT** (o **LIKE** como fallback) sobre `services.titulo, services.descripcion`, con **cascada de filtros** (categoría/barrio).
-2. **Re-ranking IA (Cohere):** se envía el **top-k** de candidatos; la IA devuelve **relevancias** por índice.
-3. **Puntuación final:** `final = 0.70*ia + 0.20*prox + 0.10*rating`.
-4. **Fallback robusto:** si IA falla (timeout/401/429), se usa **puntaje textual normalizado**.
+**Flujo general**
+1. **Candidatos**: consulta **FULLTEXT** (o **LIKE** como fallback) sobre `services.titulo` y `services.descripcion`, con **cascada** de filtros (categoría/barrio).  
+2. **Re-ranking IA (Cohere/Jina)**: se envía el **Top-K** de candidatos; la IA devuelve **relevancias** por índice.  
+3. **Puntuación final**:  
+   ```text
+   final = 0.70 * ia_norm + 0.20 * proximidad + 0.10 * rating_norm
+   ```
+4. **Fallback**: si IA falla (timeout/401/429), se usa el **score textual normalizado** y se continúa igual.
+
+> 💡 **Nota**: proximidad se calcula con Haversine; rating se normaliza como `rating/5`.
 
 ---
 
 ## 2) Requisitos y entorno
-- PHP **8.2+**, Composer, MySQL **8+**.
-- **Windows (solo si ocurre cURL 60/SSL):**
-  - Descargar `cacert.pem` y ubicarlo en `storage/certs/cacert.pem`.
-  - En `php.ini` establecer:
 
-```ini
-curl.cainfo="C:\ruta\al\proyecto\storage\certs\cacert.pem"
-openssl.cafile="C:\ruta\al\proyecto\storage\certs\cacert.pem"
-3) Instalación
-bash
-Copiar código
+- PHP **8.2+**, Composer, MySQL **8+**  
+- Extensiones: `mbstring`, `openssl`, `pdo_mysql`, `curl`  
+- **Windows (solo si aparece error SSL/cURL 60)**  
+  Coloca `cacert.pem` en `storage/certs/cacert.pem` y en `php.ini` define:
+  ```ini
+  curl.cainfo="C:\ruta\al\proyecto\storage\certs\cacert.pem"
+  openssl.cafile="C:\ruta\al\proyecto\storage\certs\cacert.pem"
+  ```
+
+---
+
+## 3) Instalación
+
+```bash
 composer install
 cp .env.example .env
 php artisan key:generate
 
-# Configurar DB y RERANK_* en .env
+# Configura DB y RERANK_* en .env
 php artisan migrate --seed
 
-php artisan serve --port=8001
+php artisan serve --host=127.0.0.1 --port=8001
 # UI:   http://127.0.0.1:8001/
 # Demo: http://127.0.0.1:8001/demo.html
-.env (ejemplos)
-Base de datos
+```
 
-dotenv
-Copiar código
+---
+
+## 4) Variables .env
+
+**Base de datos**
+```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=ia_local
 DB_USERNAME=root
 DB_PASSWORD=
-Re-ranking (Cohere)
+```
 
-dotenv
-Copiar código
+**Re-ranking (Cohere)**
+```dotenv
 RERANK_PROVIDER=cohere
 RERANK_URL=https://api.cohere.ai/v1/rerank
 RERANK_KEY=TU_API_KEY
 RERANK_MODEL=rerank-multilingual-v3.0
-🔒 Importante: No subir .env ni llaves al repositorio.
+```
 
-4) Estructura relevante
-bash
-Copiar código
+> 🔒 **Importante**: no versionar `.env` ni llaves. Tras cambios: `php artisan config:clear`.
+
+---
+
+## 5) Estructura del proyecto
+
+```
 app/
-  Http/Controllers/SearchController.php   # lógica principal (búsqueda, IA, scoring)
+  Http/Controllers/SearchController.php   # Búsqueda, cascada FT/LIKE, IA, scoring
+config/
+  services.php                            # Config 'rerank' (provider/url/key/model)
 database/
-  migrations/                             # esquema de BD
-  seeders/                                # datos de ejemplo
+  migrations/                             # Esquema
+  seeders/                                # Datos de ejemplo coherentes por categoría
 public/
-  demo.html                               # demo estática (entregable 3)
+  demo.html                               # Entregable demo
   demo.js
 resources/views/app.blade.php             # UI principal
-routes/api.php                            # rutas REST
-5) Esquema de Base de Datos (mínimo)
-Tabla providers
+routes/api.php                            # /api/search, /api/ia-test, /api/health
+storage/
+  certs/cacert.pem                        # (Windows) SSL
+```
 
-id (PK)
+---
 
-nombre (varchar)
+## 6) Esquema de Base de Datos
 
-barrio (varchar)
+### Tabla `providers`
 
-lat (decimal, nullable)
+| Campo            | Tipo                | Notas                      |
+|------------------|---------------------|----------------------------|
+| `id`             | PK                  |                            |
+| `nombre`         | varchar             |                            |
+| `barrio`         | varchar             |                            |
+| `lat`            | decimal (nullable)  |                            |
+| `lon`            | decimal (nullable)  |                            |
+| `rating_promedio`| decimal             | 0–5                        |
+| `created_at`     | timestamp           |                            |
+| `updated_at`     | timestamp           |                            |
 
-lon (decimal, nullable)
+### Tabla `services`
 
-rating_promedio (decimal)
+| Campo         | Tipo               | Notas                              |
+|---------------|--------------------|------------------------------------|
+| `id`          | PK                 |                                    |
+| `provider_id` | FK → `providers.id`|                                    |
+| `categoria`   | varchar            |                                    |
+| `titulo`      | varchar            |                                    |
+| `descripcion` | text               |                                    |
+| `precio_desde`| decimal (nullable) |                                    |
+| `activo`      | tinyint            | 1 = visible                         |
+| `created_at`  | timestamp          |                                    |
+| `updated_at`  | timestamp          |                                    |
 
-created_at, updated_at
+---
 
-Tabla services
+## 7) Índices recomendados
 
-id (PK)
-
-provider_id (FK → providers.id)
-
-categoria (varchar)
-
-titulo (varchar)
-
-descripcion (text)
-
-precio_desde (decimal, nullable)
-
-activo (tinyint)
-
-created_at, updated_at
-
-Índices recomendados
-
-sql
-Copiar código
+```sql
 ALTER TABLE services  ADD FULLTEXT ft_txt (titulo, descripcion);
 CREATE INDEX idx_services_categoria ON services (categoria);
 CREATE INDEX idx_providers_barrio  ON providers (barrio);
-6) API Contract
-POST /api/search
-Body JSON
+```
 
-json
-Copiar código
+---
+
+## 8) API Contract
+
+### `POST /api/search`
+
+**Request (JSON)**
+```json
 {
   "query": "instalar cámaras",
   "categoria": null,
@@ -128,10 +174,10 @@ Copiar código
   "user_lon": null,
   "use_ia": true
 }
-Respuesta (ejemplo)
+```
 
-json
-Copiar código
+**Response (ejemplo)**
+```json
 {
   "items": [
     {
@@ -153,101 +199,90 @@ Copiar código
     "ia": { "proveedor": "cohere", "ok": true, "candidatos_enviados_a_ia": 6 }
   }
 }
-Códigos
+```
 
-200 OK (con o sin IA)
+**Estados**
+- `200` OK (con o sin IA)
+- `422` Validación (falta `query`, etc.)
+- `5xx` Excepciones (ver logs)
 
-422 Validación (falta query, etc.)
+### `GET /api/ia-test`
+Diagnóstico rápido (valida `RERANK_URL` y `RERANK_KEY`).  
+**Esperado**: `{ provider, status, raw }` con `status: 200`.
 
-5xx Excepciones (consultar logs)
+### `GET /api/health`
+```json
+{ "ok": true, "app": "…", "time": "…" }
+```
 
-GET /api/ia-test
-Llama al endpoint de re-ranking con un set fijo de pruebas.
-Devuelve status, proveedor y resultados de ejemplo.
+---
 
-GET /api/health
-Devuelve:
+## 9) Lógica y scoring
 
-json
-Copiar código
-{ "ok": true, "app": "...", "time": "..." }
-7) Lógica y scoring (detallado)
-7.1 Recuperación de candidatos (cascada)
-FULLTEXT con categoría + barrio.
+```mermaid
+flowchart LR
+    Q[Consulta del usuario] --> C{Cascada}
+    C -->|FT cat+barrio| S1[Candidates]
+    C -->|FT sin barrio| S2[Candidates]
+    C -->|FT sin categoría| S3[Candidates]
+    C -->|FT sin filtros| S4[Candidates]
+    C -->|LIKE sin filtros| S5[Candidates]
+    S1 --> IA[Re-ranker IA]
+    S2 --> IA
+    S3 --> IA
+    S4 --> IA
+    S5 --> IA
+    IA --> SC[Scoring final = 0.70 IA + 0.20 prox + 0.10 rating]
+    SC --> OUT[Ordenado y devuelto]
+```
 
-FULLTEXT sin barrio.
+**Detalles**
+- **Cascada**: FT con todos los filtros → ir relajando → LIKE como último recurso.  
+- **IA**: normaliza a `[0..1]` asignando `1` al mejor candidato.  
+- **Proximidad (Haversine)**:  
+  `prox = max(0, 1 - (dist_km / 25))` (0–25 km aporta de 1 a 0).  
+- **Rating**: `rating_norm = rating_promedio / 5`.  
+- **Empates**: desempate por `rating_promedio DESC`.  
+- **Fallback IA**: si falla, usar **score textual relativo**.
 
-FULLTEXT sin categoría.
+---
 
-FULLTEXT sin filtros.
+## 10) Seguridad y buenas prácticas
 
-LIKE sin filtros (solo si FULLTEXT no devuelve nada).
+- 🚫 **Nunca** subir `.env` ni llaves de API.  
+- ✅ Validar entradas (`query` min 2, `k` 1..50, `lat/lon` numéricos).  
+- 💸 Limitar **Top-K** enviado a IA para costo/latencia.  
+- 🧾 Loguear errores y tiempos (Laravel HTTP Client).  
+- 🌐 Configurar **CORS** si la UI vive en otro dominio.  
+- 🔁 Tras cambiar `.env`/`config`: `php artisan config:clear`.
 
-Orden por ft_score DESC, rating_promedio DESC. Top-K configurable.
+---
 
-7.2 Envío a IA (Cohere Rerank)
-Entrada: arreglo de textos candidatos (título + descripción) y query.
+## 11) Mantenimiento y pruebas
 
-Salida: índices con relevance_score.
-
-Normalización: [0..1] asignando 1 al mejor candidato y descendiendo al resto.
-
-7.3 Proximidad (Haversine)
-Distancia entre (user_lat, user_lon) y (lat, lon) del proveedor.
-
-Normalización: prox = max(0, 1 - (dist_km / 25)) → 0 a 25 km aporta de 1 a 0.
-
-7.4 Rating normalizado
-rating_n = rating_promedio / 5 → rango [0..1].
-
-7.5 Mezcla final
-text
-Copiar código
-final = 0.70 * ia_norm
-      + 0.20 * prox
-      + 0.10 * rating_n
-Empates: desempate por rating_promedio DESC.
-
-7.6 Fallback
-Si IA falla (timeout/401/429), ia_norm se reemplaza por el score textual relativo y se procede igual.
-
-8) Seguridad y buenas prácticas
-🚫 Nunca subir .env ni llaves al repositorio.
-
-✅ Validar todas las entradas: query min 2, k 1..50, lat/lon numéricos.
-
-💸 Limitar top-k para controlar costos y latencia de la IA.
-
-🧾 Registrar errores y tiempos de respuesta (HTTP Client + logs Laravel).
-
-🌐 Considerar CORS si la UI se sirve desde otro dominio.
-
-9) Mantenimiento y pruebas
-bash
-Copiar código
-# Limpiar cachés
+```bash
+# Cachés
 php artisan optimize:clear
 
-# Logs
+# Logs (seguimiento)
 tail -f storage/logs/laravel.log
 
-# Seeders para demo
-php artisan migrate --seed
+# Reseed completo
+php artisan migrate:fresh --seed
 
-# Pruebas manuales
-# Con IA ON/OFF en Postman → POST /api/search
-10) Checklist de entrega (QA)
- README.md actualizado con uso y endpoints.
+# Postman/Insomnia: probar /api/search con IA ON/OFF
+```
 
- public/demo.html y public/demo.js funcionan.
+---
 
- .env configurado (DB + RERANK_*) y no versionado.
+## 12) Checklist de entrega (QA)
 
- GET /api/ia-test devuelve 200.
+- [ ] `README.md` actualizado con uso y endpoints  
+- [ ] `public/demo.html` y `public/demo.js` funcionales  
+- [ ] `.env` configurado (DB + `RERANK_*`) y **no** versionado  
+- [ ] `GET /api/ia-test` → **200**  
+- [ ] `POST /api/search` → **200** (con y sin IA)  
+- [ ] Desempeño OK con `k ≤ 8` y **6–10** candidatos a IA  
+- [ ] Seeders cargados y **FULLTEXT** creado
 
- POST /api/search devuelve 200 con y sin IA.
-
- Desempeño aceptable con k ≤ 8 y 6–10 candidatos a IA.
-
- Semillas cargadas y FULLTEXT creado.
-
+---
